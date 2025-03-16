@@ -1,0 +1,13 @@
+boto3
+moduleconf
+numpy
+ncls
+pretty_midi
+scipy
+mir_eval
+pydub
+tensorboard
+tqdm
+sox
+soxr
+awslambdaric
