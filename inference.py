@@ -118,7 +118,7 @@ def process_audio(connection_id, job_id, audio_key, is_auth, user_id):
         s3.upload_file(local_midi_path, COMMON_BUCKET_NAME if not is_auth else AUTH_BUCKET_NAME, s3_key_midi)
         s3.upload_file(local_pdf_path, COMMON_BUCKET_NAME if not is_auth else AUTH_BUCKET_NAME, s3_key_pdf)
 
-        exe_time = datetime.now()-start_time
+        exe_time = (datetime.now()-start_time).total_seconds()
 
         if is_auth:
             update_progress_db(user_id, job_id, "Completed", s3_key_pdf, s3_key_midi, exe_time)
@@ -131,6 +131,10 @@ def process_audio(connection_id, job_id, audio_key, is_auth, user_id):
             update_progress_db(user_id, job_id, "Failed")
         send_websocket_message(connection_id, job_id, "failed", is_auth)
 
+    finally:
+        for file_path in [local_audio_path, local_midi_path, local_pdf_path]:
+            if os.path.exists(file_path):
+                os.remove(file_path)
 
 def lambda_handler(event, context):
     """
@@ -169,6 +173,7 @@ def lambda_handler(event, context):
         is_auth = body.get("isAuth")
         user_id = body.get("userId")
         file_name = body.get("file_name")
+        file_size = body.get("fileSize")
 
         # Invoke itself asynchronously for background processing
         lambda_client = boto3.client("lambda")
@@ -201,6 +206,7 @@ def lambda_handler(event, context):
                     "user_id": {"S": user_id},
                     "job_id": {"S": job_id},
                     "audio_filename": {"S": file_name},
+                    "file_size":{"S": file_size},
                     "progress": {"S": "Downloading"},
                     "timestamp": {"S": datetime.utcnow().isoformat() + "Z"}
                 }
