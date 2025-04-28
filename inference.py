@@ -200,15 +200,50 @@ def lambda_handler(event, context):
         send_websocket_message(connection_id, job_id, "Starting", is_auth)
         print("Returning: Processing started")
         if is_auth:
+            base_filename, ext = os.path.splitext(file_name)
+
+            # Query: fetch all files for the user
+            existing_files_response = db.query(
+                TableName=TABLE_NAME,
+                KeyConditionExpression="user_id = :user_id",
+                FilterExpression="attribute_not_exists(deleted) OR deleted = :deleted",
+                ExpressionAttributeValues={
+                    ":user_id": {"S": user_id},
+                    ":deleted": {"BOOL": False},
+                },
+                ProjectionExpression="audio_filename"
+            )
+
+            # Strip extensions and store just the base names
+            existing_base_filenames = set()
+            for item in existing_files_response.get('Items', []):
+                filename_with_ext = item['audio_filename']['S']
+                filename_without_ext, _ = os.path.splitext(filename_with_ext)
+                existing_base_filenames.add(filename_without_ext)
+
+            counter = 0
+            final_base_filename = base_filename
+
+            # Check conflict on base name only
+            while final_base_filename in existing_base_filenames:
+                counter += 1
+                final_base_filename = f"{base_filename}({counter})"
+
+            # Rebuild final filename with original extension
+            final_filename = f"{final_base_filename}"
+
+            # Now safe to write
             db.put_item(
                 TableName=TABLE_NAME,
                 Item={
                     "user_id": {"S": user_id},
                     "job_id": {"S": job_id},
-                    "audio_filename": {"S": file_name},
-                    "file_size":{"S": file_size},
+                    "audio_filename": {"S": final_filename},
+                    "file_size": {"S": file_size},
                     "progress": {"S": "Downloading"},
-                    "timestamp": {"S": datetime.utcnow().isoformat() + "Z"}
+                    "timestamp": {"S": datetime.utcnow().isoformat() + "Z"},
+                    "deleted": {"BOOL": False},
+                    "stared": {"BOOL": False}
                 }
             )
 
